@@ -1,0 +1,54 @@
+[project]
+requires-python = ">=3.9,<3.14"
+name = "time-series"
+version = "0.1.0"
+description = "Introduction to time-series analysis and forecasting."
+authors = [{ name = "Vortico", email = "vortico@vortico.tech" }]
+readme = "README.md"
+dependencies = [
+    "matplotlib>=3.9.4",
+    "notebook>=7.4.2",
+    "pyarrow>=20.0.0",
+    "seaborn>=0.13.2",
+    "sktime>=0.37.0",
+    "statsmodels>=0.14.4",
+]
+
+[project.urls]
+repository = "https://github.com/vortico/time-series"
+
+[tool.ruff]
+line-length = 120
+exclude = [
+  ".git",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".venv",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["C90", "E", "F", "G", "I", "W", "T", "UP"]
+ignore = ["E721"]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402"]
+
+[tool.ruff.lint.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 10
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/node_modules", "**/__pycache__", "**/migrations"]
+reportWildcardImportFromLibrary = false
+reportPrivateImportUsage = false
