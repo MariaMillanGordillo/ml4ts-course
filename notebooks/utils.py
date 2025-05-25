@@ -4,13 +4,17 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.special as special
 import scipy.stats as stats
-from sktime.forecasting.base import ForecastingHorizon
+from sktime.forecasting.base import BaseForecaster, ForecastingHorizon
+from sktime.transformations.base import BaseTransformer
 from sktime.utils.plotting import plot_series
 
 __all__ = [
     "ExampleDataLoader",
-    "bootstrapped_forecasts",
+    "BootstrappedForecaster",
+    "MyBoxCoxTransformer",
+    "MyMonthlyAdjuster",
     "plot_forecast_with_intervals",
     "plot_residuals",
     "plot_series_slice",
@@ -36,6 +40,8 @@ class ExampleDataLoader:
     _data = {
         "process": _DATA_PATH / "chemical_process.parquet",
         "energy": _DATA_PATH / "energy_demand.parquet",
+        "monthly_demand": _DATA_PATH / "electricity_au_month.parquet",
+        "electricity": _DATA_PATH / "electricity_au.parquet",
     }
 
     def __init__(self, name: str):
@@ -87,7 +93,9 @@ def plot_series_slice(
         return sliced
 
 
-def plot_residuals(residuals: pd.Series, *, show: bool = True, return_fig: bool = False) -> t.Optional[plt.Figure]:
+def plot_residuals(
+    residuals: pd.Series, *, show: bool = True, return_fig: bool = False, figsize: tuple = (12, 4)
+) -> t.Optional[plt.Figure]:
     """
     Plot a histogram and Q-Q plot to visualize the distribution of residuals.
 
@@ -99,7 +107,7 @@ def plot_residuals(residuals: pd.Series, *, show: bool = True, return_fig: bool 
     Returns:
         Optional[plt.Figure]: The matplotlib Figure, if `return_fig=True`, else None.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
 
     # Histogram with fitted normal distribution
     ax1 = axes[0]
@@ -128,49 +136,80 @@ def plot_residuals(residuals: pd.Series, *, show: bool = True, return_fig: bool 
     return fig if return_fig else None
 
 
-def bootstrapped_forecasts(
-    forecaster,
-    y: pd.Series,
-    fh: t.Union[np.ndarray, pd.Index, ForecastingHorizon],
-    n_bootstraps: int = 100,
-    random_state: t.Union[int, None] = None,
-) -> tuple[pd.Series, pd.DataFrame]:
+def plot_decomposition(y, *, trend, seasonality, residual, model="additive"):
     """
-    Generate bootstrapped prediction intervals using residual resampling.
+    Plot time series decomposition with trend, seasonality, and residual components.
 
     Parameters:
-        forecaster: A fitted sktime forecaster.
-        y (pd.Series): The observed time series used for residual computation.
-        fh (array-like or ForecastingHorizon): Forecasting horizon.
-        n_bootstraps (int): Number of bootstrap samples.
-        random_state (int or None): Random seed for reproducibility.
+        y (pd.Series): Original time series data.
+        trend (pd.Series): Trend component of the time series.
+        seasonality (pd.Series): Seasonal component of the time series.
+        residual (pd.Series): Residual component of the time series.
+        model (str, optional): Type of decomposition, either "additive" or "multiplicative". Defaults to "additive".
 
     Returns:
-        pd.DataFrame: A DataFrame of shape (len(fh), n_bootstraps), containing the bootstrapped forecasts.
+        None
     """
-    rng = np.random.default_rng(random_state)
+    fig, ax = plot_series(y, labels=["Original series"])  # type: ignore
 
-    # Forecast point prediction
-    y_pred = forecaster.predict(fh)
+    if model == "additive":
+        reconstructed = trend + seasonality
+        label = "Trend + Seasonality"
+    elif model == "multiplicative":
+        reconstructed = trend * seasonality
+        label = "Trend × Seasonality"
+    else:
+        raise ValueError("model must be either 'additive' or 'multiplicative'")
 
-    # Compute residuals using in-sample prediction
-    in_sample_fh = ForecastingHorizon(y.index, is_relative=False)
-    y_fit = forecaster.predict(in_sample_fh)
-    residuals = (y - y_fit).dropna()
-    residuals_array = residuals.to_numpy()
+    ax.plot(reconstructed, color="purple", linestyle="-.", label=label)  # type: ignore
+    ax.plot(trend, color="red", linestyle="--", alpha=0.6, label="Trend")  # type: ignore
+    ax.plot(residual, color="black", linestyle=":", alpha=0.6, label="Residual")  # type: ignore
 
-    # Ensure fh is sized
-    fh_array = np.asarray(fh)
-    fh_len = len(fh_array)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
-    # Prepare bootstrapped forecast container
-    bootstrapped_forecasts = pd.DataFrame(index=y_pred.index, columns=range(n_bootstraps), dtype=float)
+    return fig, ax
 
-    for i in range(n_bootstraps):
-        resampled = rng.choice(residuals_array, size=fh_len, replace=True)
-        bootstrapped_forecasts.iloc[:, i] = y_pred + resampled
 
-    return y_pred, bootstrapped_forecasts
+class BootstrappedForecaster:
+    def __init__(self, forecaster: BaseForecaster, random_state: int = 100):
+        self._forecaster = forecaster
+        self._rng = np.random.default_rng(random_state)
+
+    def predict(
+        self,
+        y: pd.Series,
+        fh: t.Union[np.ndarray, pd.Index, ForecastingHorizon],
+        n_bootstraps: int = 100,
+        random_state: t.Union[int, None] = None,
+    ) -> tuple[pd.Series, pd.DataFrame]:
+        """
+        Generate bootstrapped prediction intervals using residual resampling.
+
+        Parameters:
+            forecaster: A fitted sktime forecaster.
+            y (pd.Series): The observed time series used for residual computation.
+            fh (array-like or ForecastingHorizon): Forecasting horizon.
+            n_bootstraps (int): Number of bootstrap samples.
+            random_state (int or None): Random seed for reproducibility.
+
+        Returns:
+            pd.DataFrame: A DataFrame of shape (len(fh), n_bootstraps), containing the bootstrapped forecasts.
+        """
+        y_pred: pd.Series = self._forecaster.predict(fh)  # type: ignore
+
+        # Compute residuals using in-sample prediction
+        residuals = (y - self._forecaster.predict(ForecastingHorizon(y.index, is_relative=False))).dropna().to_numpy()
+
+        # Prepare bootstrapped forecast container
+        forecasts = pd.DataFrame(index=y_pred.index, columns=range(n_bootstraps), dtype=float)
+
+        for i in range(n_bootstraps):
+            resampled = self._rng.choice(residuals, size=len(np.asarray(fh)), replace=True)
+            forecasts.iloc[:, i] = y_pred + resampled
+
+        return y_pred, forecasts
 
 
 def _ensure_datetime_index(series: pd.Series) -> pd.Series:
@@ -187,7 +226,7 @@ def plot_forecast_with_intervals(
     lower: t.Optional[pd.Series] = None,
     upper: t.Optional[pd.Series] = None,
     interval_label: str = "Prediction Interval (95%)",
-    figsize: tuple[int, int] = (10, 5),
+    figsize: tuple[int, int] = (12, 4),
     title: str = "Forecast with Prediction Interval",
     xlabel: str = "Time",
     ylabel: str = "Value",
@@ -250,3 +289,64 @@ def plot_forecast_with_intervals(
 
     if show:
         plt.show()
+
+
+class MyBoxCoxTransformer:
+    def __init__(self, alpha: float | None = None):
+        self.alpha = alpha
+        self._is_fit = False
+
+    def fit(self, y):
+        _, alpha_ = stats.boxcox(y)  # type: ignore
+        self.alpha = alpha_
+        self._is_fit = True
+        return self
+
+    def transform(self, y):
+        if (not self._is_fit) and (self.alpha is None):
+            raise ValueError("Alpha value is None and transformer is not fit")
+        return stats.boxcox(y, self.alpha)
+
+    def inverse_transform(self, y):
+        if (not self._is_fit) and (self.alpha is None):
+            raise ValueError("Alpha value is None and transformer is not fit")
+
+        return special.inv_boxcox(y, self.alpha)
+
+    def fit_transform(self, y):
+        return self.fit(y).transform(y)
+
+
+class MyMonthlyAdjuster(BaseTransformer):
+    def __init__(self):
+        super().__init__()
+        self.avg_days_per_month = 365.25 / 12
+
+    def _fit(self, X, y=None):
+        # No fitting required for this transformer
+        return self
+
+    def _transform(self, X, y=None):
+        X = X.copy()
+
+        input_is_series = isinstance(X, pd.Series)
+        if input_is_series:
+            X = X.to_frame(name="__value__")
+
+        if not isinstance(X.index, pd.DatetimeIndex):
+            raise ValueError("X must have a DatetimeIndex")
+
+        X["Date"] = X.index
+        X["__DaysInMonth__"] = X["Date"].dt.days_in_month
+
+        adjusted_cols = {}
+        for col in X.columns.difference(["Date", "__DaysInMonth__"]):
+            adjusted_col = (X[col] / X["__DaysInMonth__"]) * self.avg_days_per_month
+            adjusted_cols[col] = adjusted_col
+
+        adjusted = pd.DataFrame(adjusted_cols, index=X["Date"])  # type: ignore
+
+        if input_is_series:
+            return adjusted.squeeze()
+
+        return adjusted
