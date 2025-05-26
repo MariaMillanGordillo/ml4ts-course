@@ -9,15 +9,20 @@ import scipy.stats as stats
 from sktime.forecasting.base import BaseForecaster, ForecastingHorizon
 from sktime.transformations.base import BaseTransformer
 from sktime.utils.plotting import plot_series
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima_process import ArmaProcess
 
 __all__ = [
     "ExampleDataLoader",
+    "ArmaProcess",
     "BootstrappedForecaster",
     "MyBoxCoxTransformer",
     "MyMonthlyAdjuster",
     "plot_forecast_with_intervals",
     "plot_residuals",
     "plot_series_slice",
+    "plot_acf",
+    "plot_pacf",
 ]
 
 
@@ -42,6 +47,7 @@ class ExampleDataLoader:
         "energy": _DATA_PATH / "energy_demand.parquet",
         "monthly_demand": _DATA_PATH / "electricity_au_month.parquet",
         "electricity": _DATA_PATH / "electricity_au.parquet",
+        "google": _DATA_PATH / "google.parquet",
     }
 
     def __init__(self, name: str):
@@ -289,6 +295,121 @@ def plot_forecast_with_intervals(
 
     if show:
         plt.show()
+
+
+def plot_series_and_acf(
+    series: pd.Series,
+    *,
+    title: str = "Time series",
+    lags: int = 40,
+    alpha: float = 0.05,
+    figsize: tuple[int, int] = (12, 4),
+    show: bool = True,
+    return_fig: bool = False,
+) -> t.Optional[plt.Figure]:
+    """
+    Plot a time series and its autocorrelation function.
+
+    Parameters:
+        series (pd.Series): Time series data to be plotted.
+        title (str): Title for the time series plot.
+        lags (int): Number of lags to show in ACF plot.
+        alpha (float): Confidence level for the ACF.
+        figsize (Tuple[int, int]): Size of the full figure (width, height).
+        show (bool): Whether to display the plot using plt.show().
+        return_fig (bool): If True, returns the matplotlib Figure object.
+
+    Returns:
+        Optional[plt.Figure]: The matplotlib Figure, if `return_fig=True`.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
+
+    axes[0].plot(series.index, series, marker="o", markersize=2)
+    axes[0].set_title(title)
+    axes[0].set_ylabel("Value")
+    axes[0].grid(True, linestyle="--", alpha=0.4)
+
+    plot_acf(series, lags=lags, alpha=alpha, ax=axes[1], zero=False, auto_ylims=True)
+
+    if show:
+        plt.show()
+
+    return fig if return_fig else None
+
+
+def plot_series_and_pacf(
+    series: pd.Series,
+    *,
+    title: str = "Time series",
+    lags: int = 40,
+    alpha: float = 0.05,
+    figsize: tuple[int, int] = (12, 4),
+    show: bool = True,
+    return_fig: bool = False,
+) -> t.Optional[plt.Figure]:
+    """
+    Plot a time series and its partial-autocorrelation function.
+
+    Parameters:
+        series (pd.Series): Time series data to be plotted.
+        title (str): Title for the time series plot.
+        lags (int): Number of lags to show in ACF plot.
+        alpha (float): Confidence level for the ACF.
+        figsize (Tuple[int, int]): Size of the full figure (width, height).
+        show (bool): Whether to display the plot using plt.show().
+        return_fig (bool): If True, returns the matplotlib Figure object.
+
+    Returns:
+        Optional[plt.Figure]: The matplotlib Figure, if `return_fig=True`.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
+
+    axes[0].plot(series.index, series, marker="o", markersize=2)
+    axes[0].set_title(title)
+    axes[0].set_ylabel("Value")
+    axes[0].grid(True, linestyle="--", alpha=0.4)
+
+    plot_pacf(series, lags=lags, alpha=alpha, ax=axes[1], zero=False, auto_ylims=True)
+
+    if show:
+        plt.show()
+
+    return fig if return_fig else None
+
+
+def plot_acf_and_pacf(
+    series: pd.Series,
+    *,
+    lags: int = 40,
+    alpha: float = 0.05,
+    figsize: tuple[int, int] = (12, 4),
+    show: bool = True,
+    return_fig: bool = False,
+) -> t.Optional[plt.Figure]:
+    """
+    Plot ACF and PACF functions.
+
+    Parameters:
+        series (pd.Series): Time series data to be plotted.
+        title (str): Title for the time series plot.
+        lags (int): Number of lags to show in ACF plot.
+        alpha (float): Confidence level for the ACF.
+        figsize (Tuple[int, int]): Size of the full figure (width, height).
+        show (bool): Whether to display the plot using plt.show().
+        return_fig (bool): If True, returns the matplotlib Figure object.
+
+    Returns:
+        Optional[plt.Figure]: The matplotlib Figure, if `return_fig=True`.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=figsize, constrained_layout=True)
+
+    plot_acf(series, lags=lags, alpha=alpha, ax=axes[0], zero=False, auto_ylims=True)
+    plot_pacf(series, lags=lags, alpha=alpha, ax=axes[1], zero=False, auto_ylims=True)
+
+    if show:
+        plt.show()
+
+    return fig if return_fig else None
 
 
 class MyBoxCoxTransformer:

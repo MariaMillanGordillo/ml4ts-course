@@ -6,13 +6,15 @@ description = "Introduction to time-series analysis and forecasting."
 authors = [{ name = "Vortico", email = "vortico@vortico.tech" }]
 readme = "README.md"
 dependencies = [
-    "matplotlib>=3.9.4",
-    "notebook>=7.4.2",
-    "pyarrow>=20.0.0",
-    "seaborn>=0.13.2",
-    "skforecast>=0.16.0",
-    "sktime>=0.37.0",
-    "statsmodels>=0.14.4",
+  "matplotlib>=3.9.4",
+  "notebook>=7.4.2",
+  "numpy<2.0.0",
+  "pmdarima>=2.0.4",
+  "pyarrow>=20.0.0",
+  "seaborn>=0.13.2",
+  "skforecast>=0.16.0",
+  "sktime>=0.37.0",
+  "statsmodels>=0.14.4",
 ]
 
 [project.urls]
